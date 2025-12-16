@@ -10,6 +10,7 @@ struct Config: Decodable {
         numberOfRunsUntilHostReboot: Int? = nil,
         runnerName: String? = nil,
         autoTransferImageVolume: String? = nil,
+        instanceID: String? = nil,
         retryDelay: Int,
         sshCredentials: SSHCredentials,
         sshConnectMaxRetries: Int,
@@ -24,6 +25,8 @@ struct Config: Decodable {
         self.vmClonePath = vmClonePath
         self.numberOfRunsUntilHostReboot = numberOfRunsUntilHostReboot
         self.runnerName = runnerName
+        self.autoTransferImageVolume = autoTransferImageVolume
+        self.instanceID = instanceID
         self.retryDelay = retryDelay
         self.sshCredentials = sshCredentials
         self.sshConnectMaxRetries = sshConnectMaxRetries
@@ -48,6 +51,11 @@ struct Config: Decodable {
     let numberOfRunsUntilHostReboot: Int?
     /// Overrides the runner name chosen by the provisioner.
     let runnerName: String?
+    /// The name of the volume to which the image should be transferred before provisioning.
+    let autoTransferImageVolume: String?
+    /// Optional identifier for the Cilicon instance when running multiple hosts concurrently.
+    /// When set, this value is appended to clone paths and runner names to avoid collisions.
+    let instanceID: String?
     /// Delay in seconds before retrying to provision the image a failed cycle.
     let retryDelay: Int
     /// Credentials to be used when connecting via SSH.
@@ -69,6 +77,8 @@ struct Config: Decodable {
         case vmClonePath
         case numberOfRunsUntilHostReboot
         case runnerName
+        case autoTransferImageVolume
+        case instanceID
         case retryDelay
         case sshCredentials
         case sshConnectMaxRetries
@@ -88,12 +98,58 @@ struct Config: Decodable {
         ) ?? URL(filePath: NSHomeDirectory()).appending(component: "vmclone").path
         self.numberOfRunsUntilHostReboot = try container.decodeIfPresent(Int.self, forKey: .numberOfRunsUntilHostReboot)
         self.runnerName = try container.decodeIfPresent(String.self, forKey: .runnerName)
+        self.autoTransferImageVolume = try container.decodeIfPresent(String.self, forKey: .autoTransferImageVolume)
+        self.instanceID = try container.decodeIfPresent(String.self, forKey: .instanceID)
         self.retryDelay = try container.decodeIfPresent(Int.self, forKey: .retryDelay) ?? 5
         self.sshCredentials = try container.decodeIfPresent(SSHCredentials.self, forKey: .sshCredentials) ?? .default
         self.sshConnectMaxRetries = try container.decodeIfPresent(Int.self, forKey: .sshConnectMaxRetries) ?? 10
         self.preRun = try container.decodeIfPresent(String.self, forKey: .preRun)
         self.postRun = try container.decodeIfPresent(String.self, forKey: .postRun)
         self.consoleDevices = try container.decodeIfPresent([String].self, forKey: .consoleDevices) ?? []
+    }
+
+    /// Returns the effective instance identifier, trimmed and empty-string safe.
+    var resolvedInstanceID: String? {
+        guard let instanceID = instanceID?.trimmingCharacters(in: .whitespacesAndNewlines), !instanceID.isEmpty else {
+            return nil
+        }
+        return instanceID
+    }
+
+    /// Computes a VM clone path that is unique for the current instance, if an instance ID is set.
+    var instanceScopedVMClonePath: String {
+        guard let resolvedInstanceID else { return vmClonePath }
+        return URL(filePath: vmClonePath).appending(component: resolvedInstanceID).path
+    }
+
+    /// Returns the runner name with the instance ID appended to avoid collisions.
+    /// - Parameter defaultName: The default name to fall back to when no runnerName is provided.
+    func resolvedRunnerName(defaultName: String?) -> String {
+        let baseName = runnerName ?? defaultName ?? "no-name"
+        guard let resolvedInstanceID else { return baseName }
+        return "\(baseName)-\(resolvedInstanceID)"
+    }
+
+    /// Returns a new config with the provided instance ID overriding the existing value if present.
+    func withResolvedInstanceID(_ overrideID: String?) -> Config {
+        let resolvedID = overrideID?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return Config(
+            provisioner: provisioner,
+            hardware: hardware,
+            directoryMounts: directoryMounts,
+            source: source,
+            vmClonePath: vmClonePath,
+            numberOfRunsUntilHostReboot: numberOfRunsUntilHostReboot,
+            runnerName: runnerName,
+            autoTransferImageVolume: autoTransferImageVolume,
+            instanceID: resolvedID?.isEmpty == false ? resolvedID : instanceID,
+            retryDelay: retryDelay,
+            sshCredentials: sshCredentials,
+            sshConnectMaxRetries: sshConnectMaxRetries,
+            preRun: preRun,
+            postRun: postRun,
+            consoleDevices: consoleDevices
+        )
     }
 }
 
