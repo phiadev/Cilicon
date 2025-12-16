@@ -36,7 +36,7 @@ final class VMManager: NSObject, ObservableObject {
         }
         self.config = config
         self.masterBundle = VMBundle(url: URL(filePath: config.source.localPath))
-        self.clonedBundle = VMBundle(url: URL(filePath: config.vmClonePath))
+        self.clonedBundle = VMBundle(url: URL(filePath: config.instanceScopedVMClonePath))
     }
 
     func setupAndRunVM() async throws {
@@ -78,6 +78,10 @@ final class VMManager: NSObject, ObservableObject {
     private func cloneBundle() async throws {
         vmState = .copying
         try await Task {
+            try fileManager.createDirectory(
+                at: clonedBundle.url.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
             try removeBundleIfExists()
             try fileManager.copyItem(at: masterBundle.url.resolvingSymlinksInPath(), to: clonedBundle.url)
         }.value

@@ -21,7 +21,12 @@ class ConfigManager {
         guard let data = FileManager.default.contents(atPath: configPath) else {
             throw ConfigManagerError.fileCouldNotBeRead
         }
-        self.config = try decoder.decode(Config.self, from: data)
+        let rawConfig = try decoder.decode(Config.self, from: data)
+
+        let cliInstanceID = UserDefaults.standard.string(forKey: "instance-id")
+        let envInstanceID = ProcessInfo.processInfo.environment["CILICON_INSTANCE_ID"]
+
+        self.config = rawConfig.withResolvedInstanceID(cliInstanceID ?? envInstanceID)
     }
 }
 

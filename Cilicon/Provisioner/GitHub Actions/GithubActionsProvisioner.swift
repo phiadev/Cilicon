@@ -15,7 +15,7 @@ class GithubActionsProvisioner: Provisioner {
     }
 
     var runnerName: String {
-        config.runnerName ?? Host.current().localizedName ?? "no-name"
+        config.resolvedRunnerName(defaultName: Host.current().localizedName)
     }
 
     func provision(bundle: VMBundle, sshClient: SSHClient) async throws {
